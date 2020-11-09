@@ -1,0 +1,8 @@
+var a: integer;
+begin
+a = 23123;
+case a+3 of
+5: a = 8;
+23123: a = 00;
+end_case;
+end
