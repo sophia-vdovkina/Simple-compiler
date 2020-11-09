@@ -1,12 +1,36 @@
 from Token import Token
-import sys
-
 
 class Lexer:
 
     # терминальный словарь
     NUM, ID, VAR, BEGIN, END, INT, CASE, OF, END_CASE, DIV, READ, WRITE, LPAR, RPAR, PLUS, MINUS, \
     EQUAL, SEMICOLON, DOT, COLON, COMMA, EOF = range(22)
+
+    NAMES = [
+        "number",
+        "variable",
+        "var",
+        "begin",
+        "end",
+        "integer",
+        "case",
+        "of",
+        "endcase",
+        "/",
+        "read",
+        "write",
+        "(",
+        ")",
+        "+",
+        "-",
+        "=",
+        ";",
+        ".",
+        ":",
+        ","
+    ]
+
+
 
     # специальные символы языка
     SYMBOLS = {'=': EQUAL, ';': SEMICOLON, '(': LPAR, ')': RPAR, '+': PLUS,
@@ -38,7 +62,7 @@ class Lexer:
     # вывод сообщения об ошибке
     def error(self, msg):
         self.f.close()
-        raise Exception('Lexer error: ', msg)
+        raise Exception(f'Lexer error: {msg}')
 
     # получить следующий символ
     def get_char(self):
@@ -86,6 +110,6 @@ class Lexer:
                 elif len(ident) <= 9:
                     self.tok = Token(ident, Lexer.ID, self.line, self.col)
                 else:
-                    self.error('Unknown identifier: ' + ident + ' on line ' + str(self.line))
+                    self.error('unknown identifier: ' + ident + ' on line ' + str(self.line))
             else:
-                self.error('Unexpected symbol: ' + self.ch + ' on line ' + str(self.line))
+                self.error('unexpected symbol: ' + self.ch + ' on line ' + str(self.line))

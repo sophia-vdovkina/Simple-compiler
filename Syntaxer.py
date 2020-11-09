@@ -1,44 +1,62 @@
 from Lexer import Lexer
 
-class BinOp():
+
+class AST(object):
+    pass
+
+
+class BinOp(AST):
     def __init__(self, left, op, right):
         self.left = left
         self.token = self.op = op
         self.right = right
 
-class Assign():
+
+class Assign(AST):
     def __init__(self, left, op, right):
         self.left = left
         self.token = self.op = op
         self.right = right
 
-class UnarOp():
+
+class UnarOp(AST):
     def __init__(self, op, expr):
         self.token = self.op = op
         self.expr = expr
 
-class Read():
+
+class Read(AST):
     def __init__(self, expr):
         self.expr = expr
 
-class Write():
+
+class Write(AST):
     def __init__(self, expr):
         self.expr = expr
 
-class Case():
+
+class Case(AST):
     def __init__(self, case, select):
         self.expr = case
         self.select = select
 
-class Selecter():
+
+class Selecter(AST):
     def __init__(self, id, expr):
         self.id = id
         self.expr = expr
 
-class Var():
+
+class Var(AST):
+    def __init__(self, token):
+        self.token = token
+
+
+class Num(AST):
     def __init__(self, token):
         self.token = token
         self.val = token.val
+
 
 class Syntaxer:
     PROG, DECL, DESL, ALIST, VLIST, AS, UN, BIN, OP, CLIST, SELECT, FUNC, EXP, SUBEXP = range(14)
@@ -55,7 +73,7 @@ class Syntaxer:
         return node
 
     def error(self, msg):
-        raise Exception('Syntax exception ' + msg)
+        raise Exception('Syntax error: ' + msg)
 
     def eat(self, token_type):
         # compare the current token type with the passed token
@@ -65,7 +83,8 @@ class Syntaxer:
         if self.current_token.type == token_type:
             self.current_token = self.tokens.pop(0)
         else:
-            self.error("cannot resolve this token " + str(self.current_token.val) + " at line " + str(self.current_token.line))
+            self.error(f"cannot resolve this token {str(self.current_token.val)} at line {str(self.current_token.line)}"
+                       f" at column {str(self.current_token.column)}.  Expected {Lexer.NAMES[token_type]}")
 
     def program(self):
         """program : DECL DESC"""
@@ -74,22 +93,23 @@ class Syntaxer:
         program_node = [var_node, desc_node]
         return program_node
 
-
     def variable_declaration(self):
         """var VLIST : integer;"""
         self.eat(Lexer.VAR)
-        var_nodes = [Var(self.current_token)]  # first ID
-        self.eat(Lexer.ID)
-        var_nodes = [self.current_token]  # first ID
-        self.eat(Lexer.ID)
-        while self.current_token.type == Lexer.COMMA:
-            self.eat(Lexer.COMMA)
-            var_nodes.append(Var(self.current_token))
-            self.eat(Lexer.ID)
+        var_nodes = self.variable_list()
         self.eat(Lexer.COLON)
         self.eat(Lexer.INT)
         self.eat(Lexer.SEMICOLON)
         return var_nodes
+
+    def variable_list(self):
+        nodes = [Var(self.current_token)]  # first ID
+        self.eat(Lexer.ID)
+        while self.current_token.type == Lexer.COMMA:
+            self.eat(Lexer.COMMA)
+            nodes.append(Var(self.current_token))
+            self.eat(Lexer.ID)
+        return nodes
 
     def variable(self):
         """
@@ -98,7 +118,6 @@ class Syntaxer:
         node = Var(self.current_token)
         self.eat(Lexer.ID)
         return node
-
 
     def main_block(self):
         """begin ALIST END"""
@@ -113,7 +132,7 @@ class Syntaxer:
                        | func ALIST | e
         """
         statements = []
-        while self.current_token.type in (Lexer.ID, Lexer.READ, Lexer.READ, Lexer.CASE):
+        while self.current_token.type in (Lexer.ID, Lexer.READ, Lexer.WRITE, Lexer.CASE):
             if self.current_token.type == Lexer.ID:
                 statements.append(self.assignment_statement())
             elif self.current_token.type in (Lexer.READ, Lexer.WRITE, Lexer.CASE):
@@ -134,46 +153,71 @@ class Syntaxer:
 
     def expr(self):
         """
-        expr : subexp F' | - subexp
+        expr : term ((PLUS | MINUS) term)*
         """
+        node = self.term()
 
-        if self.current_token.type in (Lexer.LPAR, Lexer.ID, Lexer.NUM, Lexer.MINUS):
-            if self.current_token.type == Lexer.MINUS:
-                token = self.current_token
+        while self.current_token.type in (Lexer.PLUS, Lexer.MINUS):
+            token = self.current_token
+            if token.type == Lexer.PLUS:
+                self.eat(Lexer.PLUS)
+            elif token.type == Lexer.MINUS:
                 self.eat(Lexer.MINUS)
-                node = UnarOp(token, self.subexp())
-                return node
-            else:
-                node = self.subexp()
-                if self.current_token.type in (Lexer.MINUS, Lexer.PLUS, Lexer.DIV):
-                    token = self.current_token
-                    self.eat(self.current_token.type)
-                    node = BinOp(left=node, op=token, right=self.subexp())
-                return node
 
-    def subexp(self):
-        if self.current_token.type == Lexer.LPAR:
-            self.eat(Lexer.LPAR)
-            self.expr()
-            self.eat(Lexer.RPAR)
-        else:
-            node = self.current_token
-            if self.current_token.type == Lexer.ID:
-                node = self.variable()
-            else:
-                self.eat(Lexer.NUM)
+            node = BinOp(left=node, op=token, right=self.term())
+
         return node
+
+    def term(self):
+        """term : factor ((DIV) factor)*"""
+        node = self.factor()
+
+        while self.current_token.type == Lexer.DIV:
+            token = self.current_token
+            self.eat(Lexer.DIV)
+
+            node = BinOp(left=node, op=token, right=self.factor())
+
+        return node
+
+    def factor(self):
+        """factor : MINUS factor
+                  | CONST
+                  | LPAREN expr RPAREN
+                  | variable
+        """
+        token = self.current_token
+        if token.type == Lexer.MINUS:
+            self.eat(Lexer.MINUS)
+            node = UnarOp(token, self.factor())
+            return node
+        elif token.type == Lexer.NUM:
+            self.eat(Lexer.NUM)
+            node = Num(token)
+            return node
+        elif token.type == Lexer.LPAR:
+            self.eat(Lexer.LPAR)
+            node = self.expr()
+            self.eat(Lexer.RPAR)
+            return node
+        else:
+            node = self.variable()
+            return node
 
     def func(self):
         if self.current_token.type == Lexer.READ:
             self.eat(Lexer.READ)
-            id = self.variable()
+            self.eat(Lexer.LPAR)
+            id = self.variable_list()
             node = Read(id)
-        if self.current_token.type == Lexer.WRITE:
+            self.eat(Lexer.RPAR)
+        elif self.current_token.type == Lexer.WRITE:
             self.eat(Lexer.WRITE)
-            id = self.variable()
+            self.eat(Lexer.LPAR)
+            id = self.variable_list()
             node = Write(id)
-        if self.current_token.type == Lexer.CASE:
+            self.eat(Lexer.RPAR)
+        elif self.current_token.type == Lexer.CASE:
             self.eat(Lexer.CASE)
             expr = self.expr()
             self.eat(Lexer.OF)
